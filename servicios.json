@@ -1,0 +1,37 @@
+{
+  "ai": {
+    "nombre": "Agentes / Chatbot AI",
+    "descripcion": "Implementación de Agente IA de Atención al Cliente",
+    "precio": 500
+  },
+  "af": {
+    "nombre": "Correo Corporativo / Automatización",
+    "descripcion": "Configuración de cuentas de correo corporativo y flujos de automatización",
+    "precio": 100
+  },
+  "lp": {
+    "nombre": "Landing Page",
+    "descripcion": "Diseño y desarrollo de página de aterrizaje profesional",
+    "precio": 200
+  },
+  "md": {
+    "nombre": "Desarrollo de aplicacion a la medida",
+    "descripcion": "Desarrollo de software personalizado",
+    "precio": 1200
+  },
+  "con": {
+    "nombre": "Consultoría TI",
+    "descripcion": "Consultoría tecnológica e inteligencia artificial",
+    "precio": 300
+  },
+  "sop": {
+    "nombre": "Soporte Técnico",
+    "descripcion": "Soporte y mantenimiento de sistemas",
+    "precio": 250
+  },
+  "gmb": {
+    "nombre": "Análisis perfil Negocio",
+    "descripcion": "Revisión y Análisis del perfil de Google My Business",
+    "precio": 300
+  }
+}
