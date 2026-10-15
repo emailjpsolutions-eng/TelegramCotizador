@@ -16,6 +16,7 @@ Sistema inteligente de cotización y propuestas comerciales a través de Telegra
 9. [Estructura del Proyecto](#-estructura-del-proyecto)
 10. [Catálogo de Servicios](#-catálogo-de-servicios)
 11. [Consideraciones de Red y Despliegue](#-consideraciones-de-red-y-despliegue)
+12. [Despliegue en la Nube (Render 24/7 y Alta Disponibilidad)](#-despliegue-en-la-nube-render-247-y-alta-disponibilidad)
 
 ---
 
@@ -257,16 +258,18 @@ Si en la nota de voz o mensaje solicitas un servicio que no figura en `servicios
 
 ```
 TelegramCotizador/
-├── .env                  # Variables de entorno y llaves secretas (NO commitear)
+├── .env                  # Variables de entorno y llaves secretas (Ignorado en Git)
+├── .env.example          # Plantilla de referencia para variables de entorno
+├── .gitignore            # Reglas de exclusión para Git (ignora node_modules, .env, tokens)
 ├── assets/
 │   └── pdfAssets.js      # Recursos embebidos en Base64 (Fuente Arial + Logo PNG)
 ├── auth_helper.html      # Portal web interactivo para autorización OAuth de Google
 ├── auth.log              # Registros de eventos de autenticación
-├── bot.js                # Lógica central del bot, handlers Telegraf y parser NLP
+├── bot.js                # Lógica central del bot, handlers Telegraf, parser NLP y servidor Express
 ├── Documentacion.md      # Guía técnica complementaria de despliegue y servidores
 ├── gmail_tokens.json     # Almacenamiento local de tokens de acceso y refresco de Gmail
-├── oauth.js              # Servidor local en puerto 3000 y cliente OAuth2 de Google
-├── package.json          # Metadatos del proyecto y dependencias
+├── oauth.js              # Servidor local/web para OAuth2 de Google y gestión de tokens
+├── package.json          # Metadatos del proyecto, scripts (start, dev) y dependencias
 ├── package-lock.json     # Árbol de versiones bloqueadas
 ├── pdfEngine.js          # Motor vectorial de maquetación de cotizaciones PDF (jsPDF)
 ├── README.md             # Esta documentación general del proyecto
@@ -333,6 +336,44 @@ Los servicios reconocidos por el bot y sus tarifas base están centralizados en 
 ### Ciclo de Vida de Tokens Gmail
 * La aplicación almacena el `refresh_token` de Google. Cuando el `access_token` expira (cada 60 minutos), `oauth.js` solicita automáticamente uno nuevo a Google sin interrumpir al usuario.
 * Si el token es revocado manualmente en la cuenta de Google, el bot notificará en el chat que se debe ejecutar `/auth` nuevamente.
+
+---
+
+## ☁️ Despliegue en la Nube (Render 24/7 y Alta Disponibilidad)
+
+El bot está preparado para ejecutarse de forma ininterrumpida en la nube mediante un **Web Service de Render** conectado a GitHub, eliminando la dependencia de mantener una computadora física encendida.
+
+### 1. Arquitectura de Alta Disponibilidad
+* **Servidor Web Express Integrado (`bot.js`):** Escucha en el puerto dinámico asignado por Render (`process.env.PORT`) y responde con código HTTP 200 en las rutas `/` y `/health`.
+* **Persistencia de Tokens OAuth:** Soporte nativo para la variable de entorno `GMAIL_REFRESH_TOKEN` en `oauth.js`, garantizando que las sesiones de Gmail API persistan tras reinicios en sistemas de archivos efímeros.
+* **Tolerancia a Fallos:** Reintentos automáticos continuos de conexión hacia la API de Telegram con intervalos de 5 segundos.
+
+### 2. Variables de Entorno en Producción
+Configurar en el panel de Render (*Environment Variables*):
+
+| Variable | Descripción |
+| :--- | :--- |
+| `BOT_TOKEN` | Token del bot provisto por BotFather en Telegram |
+| `DEEPGRAM_API_KEY` | Clave API de Deepgram para transcripción de voz |
+| `GOOGLE_CLIENT_ID` | Identificador de cliente OAuth 2.0 de Google Cloud Console |
+| `GOOGLE_CLIENT_SECRET` | Clave secreta OAuth 2.0 de Google Cloud Console |
+| `GMAIL_REFRESH_TOKEN` | Token de refresco permanente de Gmail para emitir borradores |
+| `JP_EMAIL` | Correo corporativo del emisor (ej. `info@jpsolutions.online`) |
+
+### 3. Despliegue Continuo (CI/CD Automático)
+El servicio está vinculado al repositorio de GitHub:
+`https://github.com/emailjpsolutions-eng/TelegramCotizador`
+
+* **Comando de compilación (Build Command):** `npm install`
+* **Comando de inicio (Start Command):** `node bot.js`
+* **Auto-Deploy:** Al hacer `git push origin main` desde el entorno de desarrollo local, Render detecta automáticamente las modificaciones, descarga el nuevo código y reinicia el bot sin intervención manual.
+
+### 4. Estrategia Anti-Suspensión (Keep-Alive 24/7)
+En la capa gratuita de Render, las instancias web entran en modo reposo tras 15 minutos sin tráfico entrante. Para mantener el bot operativo 24 horas al día de forma gratuita:
+* Se configura una tarea programada en un servicio externo como [cron-job.org](https://cron-job.org) o [UptimeRobot](https://uptimerobot.com).
+* **Frecuencia:** Cada 10 minutos (`*/10 * * * *`).
+* **Endpoint consultado:** `GET https://tu-servicio.onrender.com/health`
+* **Resultado:** La instancia permanece caliente y activa permanentemente, respondiendo a notas de voz y mensajes de Telegram al instante.
 
 ---
 
