@@ -748,53 +748,65 @@ bot.on('text', async (ctx, next) => {
     }
 
     if (action === 'awaiting_service') {
-      // El usuario envió el nuevo nombre de servicio — REEMPLAZAR todos los existentes con UNO SOLO
-      const parsed = await parseNaturalLanguage(userText);
-      parsed.replaceServices = true;
-      // Si el parser no detectó ningún servicio, crear uno personalizado con el texto literal
-      if (!parsed.servicios || parsed.servicios.length === 0) {
-        const svcName = userText.trim().replace(/[;,.]$/, '').trim();
-        const formattedName = svcName.charAt(0).toUpperCase() + svcName.slice(1);
-        parsed.servicios = [{
-          id: `custom_${svcName.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}`,
-          nombre: formattedName,
-          descripcion: `Servicio especializado: ${formattedName}`,
-          precio: null,
-          cantidad: 1,
-          isCustom: true
-        }];
-      } else {
-        // Tomar SOLO el primer servicio detectado para evitar re-agregar servicios no deseados
-        parsed.servicios = [parsed.servicios[0]];
-      }
-      const currentData = mergeStateData(ctx.chat.id, parsed);
-      await ctx.reply(buildSummaryMessage(currentData), {
+      // Usar el texto LITERALMENTE como nombre — sin mapear al catálogo
+      // Extraer precio si el usuario lo incluyó (ej: "Chatbot $300" o "Chatbot ;monto 300")
+      const newPrice = extractPriceUpdates(userText);
+      // Preservar precio del primer servicio existente si no se especificó uno nuevo
+      const existingPrice = (state.data.servicios && state.data.servicios.length > 0)
+        ? state.data.servicios[0].precio
+        : null;
+      const finalPrice = (newPrice !== null) ? newPrice : existingPrice;
+      // Limpiar el nombre: quitar precio/monto si fue incluido en el texto
+      const svcNameRaw = userText
+        .replace(/\s*;?\s*(?:monto|precio|costo)\s*\$?\s*[\d.,]+/gi, '')
+        .replace(/\s*\$\s*[\d.,]+/g, '')
+        .trim().replace(/[;,.]$/, '').trim();
+      const formattedName = svcNameRaw.charAt(0).toUpperCase() + svcNameRaw.slice(1);
+      // Reemplazar TODOS los servicios con el nuevo (literal)
+      state.data.servicios = [{
+        id: `custom_${svcNameRaw.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}`,
+        nombre: formattedName,
+        descripcion: state.data.servicios && state.data.servicios.length > 0
+          ? (state.data.servicios[0].descripcion || `Servicio: ${formattedName}`)
+          : `Servicio: ${formattedName}`,
+        precio: finalPrice,
+        cantidad: 1,
+        isCustom: true
+      }];
+      await ctx.reply(buildSummaryMessage(state.data), {
         parse_mode: 'Markdown',
-        ...buildConfirmationKeyboard(currentData)
+        ...buildConfirmationKeyboard(state.data)
       });
       return;
     }
 
     if (action === 'awaiting_add_service') {
-      // El usuario quiere AGREGAR un servicio sin borrar los existentes
-      const parsed = await parseNaturalLanguage(userText);
-      parsed.replaceServices = false;
-      if (!parsed.servicios || parsed.servicios.length === 0) {
-        const svcName = userText.trim().replace(/[;,.]$/, '').trim();
-        const formattedName = svcName.charAt(0).toUpperCase() + svcName.slice(1);
-        parsed.servicios = [{
-          id: `custom_${svcName.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}`,
-          nombre: formattedName,
-          descripcion: `Servicio especializado: ${formattedName}`,
-          precio: null,
-          cantidad: 1,
-          isCustom: true
-        }];
+      // Agregar servicio con nombre LITERAL sin borrar los existentes
+      const newPrice = extractPriceUpdates(userText);
+      const svcNameRaw = userText
+        .replace(/\s*;?\s*(?:monto|precio|costo)\s*\$?\s*[\d.,]+/gi, '')
+        .replace(/\s*\$\s*[\d.,]+/g, '')
+        .trim().replace(/[;,.]$/, '').trim();
+      const formattedName = svcNameRaw.charAt(0).toUpperCase() + svcNameRaw.slice(1);
+      const newSvc = {
+        id: `custom_${svcNameRaw.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}`,
+        nombre: formattedName,
+        descripcion: `Servicio: ${formattedName}`,
+        precio: newPrice,
+        cantidad: 1,
+        isCustom: true
+      };
+      if (!state.data.servicios) state.data.servicios = [];
+      // Evitar duplicados por nombre
+      const dupIdx = state.data.servicios.findIndex(s => s.nombre && s.nombre.toLowerCase() === formattedName.toLowerCase());
+      if (dupIdx >= 0) {
+        state.data.servicios[dupIdx] = newSvc;
+      } else {
+        state.data.servicios.push(newSvc);
       }
-      const currentData = mergeStateData(ctx.chat.id, parsed);
-      await ctx.reply(buildSummaryMessage(currentData), {
+      await ctx.reply(buildSummaryMessage(state.data), {
         parse_mode: 'Markdown',
-        ...buildConfirmationKeyboard(currentData)
+        ...buildConfirmationKeyboard(state.data)
       });
       return;
     }
@@ -856,50 +868,59 @@ bot.on('voice', async ctx => {
       }
 
       if (action === 'awaiting_service') {
-        const parsed = await parseNaturalLanguage(cleanText);
-        parsed.replaceServices = true;
-        if (!parsed.servicios || parsed.servicios.length === 0) {
-          const svcName = cleanText.trim().replace(/[;,.]$/, '').trim();
-          const formattedName = svcName.charAt(0).toUpperCase() + svcName.slice(1);
-          parsed.servicios = [{
-            id: `custom_${svcName.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}`,
-            nombre: formattedName,
-            descripcion: `Servicio especializado: ${formattedName}`,
-            precio: null,
-            cantidad: 1,
-            isCustom: true
-          }];
-        } else {
-          // Tomar SOLO el primer servicio detectado
-          parsed.servicios = [parsed.servicios[0]];
-        }
-        const currentData = mergeStateData(ctx.chat.id, parsed);
-        await ctx.reply(buildSummaryMessage(currentData), {
+        // Usar el texto LITERALMENTE como nombre — sin mapear al catálogo
+        const newPrice = extractPriceUpdates(cleanText);
+        const existingPrice = (state.data.servicios && state.data.servicios.length > 0)
+          ? state.data.servicios[0].precio
+          : null;
+        const finalPrice = (newPrice !== null) ? newPrice : existingPrice;
+        const svcNameRaw = cleanText
+          .replace(/\s*;?\s*(?:monto|precio|costo)\s*\$?\s*[\d.,]+/gi, '')
+          .replace(/\s*\$\s*[\d.,]+/g, '')
+          .trim().replace(/[;,.]$/, '').trim();
+        const formattedName = svcNameRaw.charAt(0).toUpperCase() + svcNameRaw.slice(1);
+        state.data.servicios = [{
+          id: `custom_${svcNameRaw.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}`,
+          nombre: formattedName,
+          descripcion: state.data.servicios && state.data.servicios.length > 0
+            ? (state.data.servicios[0].descripcion || `Servicio: ${formattedName}`)
+            : `Servicio: ${formattedName}`,
+          precio: finalPrice,
+          cantidad: 1,
+          isCustom: true
+        }];
+        await ctx.reply(buildSummaryMessage(state.data), {
           parse_mode: 'Markdown',
-          ...buildConfirmationKeyboard(currentData)
+          ...buildConfirmationKeyboard(state.data)
         });
         return;
       }
 
       if (action === 'awaiting_add_service') {
-        const parsed = await parseNaturalLanguage(cleanText);
-        parsed.replaceServices = false;
-        if (!parsed.servicios || parsed.servicios.length === 0) {
-          const svcName = cleanText.trim().replace(/[;,.]$/, '').trim();
-          const formattedName = svcName.charAt(0).toUpperCase() + svcName.slice(1);
-          parsed.servicios = [{
-            id: `custom_${svcName.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}`,
-            nombre: formattedName,
-            descripcion: `Servicio especializado: ${formattedName}`,
-            precio: null,
-            cantidad: 1,
-            isCustom: true
-          }];
+        const newPrice = extractPriceUpdates(cleanText);
+        const svcNameRaw = cleanText
+          .replace(/\s*;?\s*(?:monto|precio|costo)\s*\$?\s*[\d.,]+/gi, '')
+          .replace(/\s*\$\s*[\d.,]+/g, '')
+          .trim().replace(/[;,.]$/, '').trim();
+        const formattedName = svcNameRaw.charAt(0).toUpperCase() + svcNameRaw.slice(1);
+        const newSvc = {
+          id: `custom_${svcNameRaw.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}`,
+          nombre: formattedName,
+          descripcion: `Servicio: ${formattedName}`,
+          precio: newPrice,
+          cantidad: 1,
+          isCustom: true
+        };
+        if (!state.data.servicios) state.data.servicios = [];
+        const dupIdx = state.data.servicios.findIndex(s => s.nombre && s.nombre.toLowerCase() === formattedName.toLowerCase());
+        if (dupIdx >= 0) {
+          state.data.servicios[dupIdx] = newSvc;
+        } else {
+          state.data.servicios.push(newSvc);
         }
-        const currentData = mergeStateData(ctx.chat.id, parsed);
-        await ctx.reply(buildSummaryMessage(currentData), {
+        await ctx.reply(buildSummaryMessage(state.data), {
           parse_mode: 'Markdown',
-          ...buildConfirmationKeyboard(currentData)
+          ...buildConfirmationKeyboard(state.data)
         });
         return;
       }
