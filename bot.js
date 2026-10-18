@@ -72,7 +72,7 @@ function mergeStateData(chatId, parsedData) {
   }
 
   for (const [key, val] of Object.entries(parsedData)) {
-    if (key === 'isNewQuote' || key === 'montoGlobal' || key === 'replaceServices') continue;
+    if (key === 'isNewQuote' || key === 'montoGlobal' || key === 'replaceServices' || key === 'servicioDescripcion') continue;
     if (val !== null && val !== undefined) {
       if (key === 'servicios') {
         if (Array.isArray(val) && val.length > 0) {
@@ -99,6 +99,13 @@ function mergeStateData(chatId, parsedData) {
     }
   }
 
+  // Manejar asignación o cambio de descripción si se especificó
+  if (parsedData.servicioDescripcion) {
+    if (state.data.servicios && state.data.servicios.length > 0) {
+      state.data.servicios[state.data.servicios.length - 1].descripcion = parsedData.servicioDescripcion;
+    }
+  }
+
   // Manejar asignación o cambio de monto si se especificó
   if (parsedData.montoGlobal !== null && parsedData.montoGlobal !== undefined) {
     if (state.data.servicios && state.data.servicios.length > 0) {
@@ -111,7 +118,7 @@ function mergeStateData(chatId, parsedData) {
         state.data.servicios[state.data.servicios.length - 1].precio = parsedData.montoGlobal;
       }
     } else {
-      state.data.servicios = [{ id: 'md', nombre: 'Servicio Personalizado', cantidad: 1, precio: parsedData.montoGlobal, isCustom: true }];
+      state.data.servicios = [{ id: 'md', nombre: 'Servicio Personalizado', cantidad: 1, precio: parsedData.montoGlobal, isCustom: true, descripcion: parsedData.servicioDescripcion || 'Servicio de desarrollo / consultoría TI' }];
     }
   }
 
@@ -222,18 +229,41 @@ function extractPriceUpdates(text) {
   return null;
 }
 
+// Extractor inteligente de descripción de servicio
+function extractServiceDescription(text) {
+  if (!text) return null;
+  // 1. Explícito: "descripción: ...", "detalle: ...", "cambiar la descripción a: ..."
+  const explicit = text.match(/(?:cambiar\s+(?:la\s+)?descripci[oó]n\s+(?:a|por|en|:)?|(?:la\s+)?descripci[oó]n\s*[:=]|detalle\s*[:=])\s*([^;\n]+)/i);
+  if (explicit) {
+    let d = explicit[1].trim().replace(/^[:\s-]+/, '').trim();
+    d = d.replace(/\s*(?:;\s*)?(?:monto|precio|costo|\$)\s*[:=\s]?\s*\$?\d+.*$/i, '').trim();
+    return d.replace(/[,;.]$/, '').trim();
+  }
+
+  // 2. Lenguaje natural con "para": "quieren un CRM para registrar sus clientes"
+  const paraMatch = text.match(/(?:quieren|necesitan|requieren|solicitan|servicio\s+de|servicio:)?\s*(?:un|una|el|la)?\s*([A-Za-z0-9\s]{2,20}?)\s+para\s+([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\s,.-]+?)(?=\s+(?:al|el)\s+señor\b|\s+cliente\b|\s+empresa\b|\s+correo\b|\s+email\b|\s+tel\b|\s+monto\b|\s+precio\b|\s+\$|[;.\n]|$)/i);
+  if (paraMatch && paraMatch[2]) {
+    const purpose = paraMatch[2].trim().replace(/[,;.]$/, '').trim();
+    if (!/^(?:el\s+señor|la\s+señora|sr\.?|sra\.?|don|doña|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?$)/.test(purpose) && purpose.length >= 4) {
+      return purpose.charAt(0).toUpperCase() + purpose.slice(1);
+    }
+  }
+
+  return null;
+}
+
 // Extractor de servicios personalizados fuera del catálogo estándar
-function extractCustomServices(text, detectedPrice) {
+function extractCustomServices(text, detectedPrice, detectedDesc) {
   const custom = [];
-  const delim = `(?=\\s+para\\s+el\\b|\\s+para\\s+la\\b|\\s+para\\b|\\s+al\\s+señor\\b|\\s+a\\s+la\\s+señora\\b|\\s+al\\s+sr\\.?|\\s+a\\s+la\\s+sra\\.?|\\s+cliente\\b|\\s+empresa\\b|\\s+correo\\b|\\s+email\\b|\\s+tel[eé]fono\\b|\\s+tel\\b|\\s+descuento\\b|\\s+notas\\b|\\s+monto\\b|\\s+precio\\b|\\s+costo\\b|\\s+valor\\b|\\s+por\\s+\\$|\\s+en\\s+\\$|\\s+a\\s+\\$|\\s+\\$\\d|[;,\\.\n]|$)`;
+  const delim = `(?=\\s+para\\s+el\\b|\\s+para\\s+la\\b|\\s+para\\b|\\s+al\\s+señor\\b|\\s+a\\s+la\\s+señora\\b|\\s+al\\s+sr\\.?|\\s+a\\s+la\\s+sra\\.?|\\s+cliente\\b|\\s+empresa\\b|\\s+correo\\b|\\s+email\\b|\\s+tel[eé]fono\\b|\\s+tel\\b|\\s+descuento\\b|\\s+notas\\b|\\s+monto\\b|\\s+precio\\b|\\s+costo\\b|\\s+valor\\b|\\s+descripci[oó]n\\b|\\s+detalle\\b|\\s+por\\s+\\$|\\s+en\\s+\\$|\\s+a\\s+\\$|\\s+\\$\\d|[;,\\.\n]|$)`;
 
   const activities = 'generaci[oó]n|captaci[oó]n|prospecci[oó]n|marketing|diseño|instalaci[oó]n|mantenimiento|auditor[ií]a|reparaci[oó]n|capacitaci[oó]n|migraci[oó]n|gesti[oó]n|configuraci[oó]n|fotograf[ií]a|publicidad|asesor[ií]a|campa[nñ]as?|optimizaci[oó]n|posicionamiento';
 
   const patterns = [
     // "cambiar el servicio a X", "cambia servicio por X", "reemplazar servicio por X", "sustituir servicio por X"
-    new RegExp(`(?:cambiar|cambia|cambialo|cambiala|modificar|modifica|reemplazar|reemplaza|sustituir|sustituye|actualizar|actualiza)\\s+(?:el\\s+)?servicio\\s+(?:a|por|en|:)?\\s+([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\\s\\-\\.]+?)${delim}`, 'i'),
-    // "servicio: X", "servicio de X", "el servicio es X", "servicio es X"
-    new RegExp(`(?:(?:el\\s+)?servicio\\s*(?:es|ser[ií]a|:)?|servicio\\s+de)\\s+([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\\s\\-\\.]+?)${delim}`, 'i'),
+    new RegExp(`(?:cambiar|cambia|cambialo|cambiala|modificar|modifica|reemplazar|reemplaza|sustituir|sustituye|actualizar|actualiza)\\s+(?:el\\s+)?(?:nombre\\s+del\\s+)?servicio\\s+(?:a|por|en|:)?\\s+([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\\s\\-\\.]+?)${delim}`, 'i'),
+    // "servicio: X", "servicio de X", "el servicio es X", "servicio es X", "nuevo servicio: X"
+    new RegExp(`(?:(?:el\\s+)?(?:nuevo\\s+)?servicio\\s*(?:es|ser[ií]a|:)?|servicio\\s+de)\\s+([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\\s\\-\\.]+?)${delim}`, 'i'),
     // "quieren un CRM", "necesitan un software", "solicitan una app", "buscan un CRM"
     new RegExp(`(?:quieren|quiere|necesitan|necesita|requieren|requiere|solicitan|solicita|buscan|busca)\\s+(?:un|una|el|la)\\s+([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\\s\\-\\.]+?)${delim}`, 'i'),
     // "implementar/configurar/instalar un CRM / sistema"
@@ -278,7 +308,7 @@ function extractCustomServices(text, detectedPrice) {
         custom.push({
           id: serviceId,
           nombre: formattedName,
-          descripcion: `Servicio especializado: ${formattedName}`,
+          descripcion: detectedDesc || `Servicio especializado: ${formattedName}`,
           precio: (detectedPrice !== null && detectedPrice !== undefined) ? detectedPrice : null,
           cantidad: 1,
           isCustom: true
@@ -304,7 +334,8 @@ async function parseNaturalLanguage(rawText) {
     notas: null,
     montoGlobal: null,
     isNewQuote: false,
-    replaceServices: false
+    replaceServices: false,
+    servicioDescripcion: null
   };
 
   // Detectar si el mensaje inicia una nueva solicitud de cotización
@@ -313,8 +344,14 @@ async function parseNaturalLanguage(rawText) {
   }
 
   // Detectar si el usuario pide explícitamente cambiar o definir el servicio
-  if (/(?:cambiar|cambia|cambialo|cambiala|modificar|modifica|reemplazar|reemplaza|sustituir|sustituye)\s+(?:el\s+)?servicio|servicio\s*:|(?:el\s+)?servicio\s+(?:es|ser[ií]a)/i.test(text)) {
+  if (/(?:cambiar|cambia|cambialo|cambiala|modificar|modifica|reemplazar|reemplaza|sustituir|sustituye)\s+(?:el\s+)?(?:nombre\s+del\s+)?servicio|servicio\s*:|(?:el\s+)?servicio\s+(?:es|ser[ií]a)/i.test(text)) {
     result.replaceServices = true;
+  }
+
+  // Extraer descripción de servicio si fue especificada
+  const descDetected = extractServiceDescription(text);
+  if (descDetected) {
+    result.servicioDescripcion = descDetected;
   }
 
   // Normalizar email en el texto
@@ -443,7 +480,7 @@ async function parseNaturalLanguage(rawText) {
   serviciosDisponibles.forEach(s => {
     if (new RegExp(s.pat, 'i').test(textForServices)) {
       if (!result.servicios.some(x => x.id === s.id)) {
-        result.servicios.push({ id: s.id, cantidad: 1, precio: detectedPrice || null });
+        result.servicios.push({ id: s.id, cantidad: 1, precio: detectedPrice || null, descripcion: descDetected || null });
       }
     }
   });
@@ -453,7 +490,7 @@ async function parseNaturalLanguage(rawText) {
   const mdGeneric = /\bdesarrollo\b|\bsoftware\b/i;
   if (mdExplicit.test(textForServices) || (result.servicios.length === 0 && mdGeneric.test(textForServices))) {
     if (!result.servicios.some(x => x.id === 'md')) {
-      result.servicios.push({ id: 'md', cantidad: 1, precio: detectedPrice || null });
+      result.servicios.push({ id: 'md', cantidad: 1, precio: detectedPrice || null, descripcion: descDetected || null });
     }
   }
 
@@ -466,7 +503,7 @@ async function parseNaturalLanguage(rawText) {
   }
 
   // 2. Detección de servicios personalizados fuera del catálogo
-  const customSvcs = extractCustomServices(textForServices, detectedPrice);
+  const customSvcs = extractCustomServices(textForServices, detectedPrice, descDetected);
   customSvcs.forEach(cs => {
     if (!result.servicios.some(x => x.id === cs.id || (x.nombre && x.nombre.toLowerCase() === cs.nombre.toLowerCase()))) {
       result.servicios.push(cs);
@@ -548,6 +585,9 @@ function buildSummaryMessage(data) {
       } else {
         msg += `  ${idx + 1}. *${l.name}* (x${l.qty}) — ⚠️ *Monto pendiente*\n`;
       }
+      if (l.desc) {
+        msg += `     📝 _${l.desc}_\n`;
+      }
     });
     msg += '─────────────────────\n';
     if (!hasPendingPrice) {
@@ -592,11 +632,15 @@ function buildConfirmationKeyboard(data) {
   const hasClientOrCompany = !!(data.clienteNombre || data.clienteEmpresa);
   const hasServices = lineas.length > 0;
 
-  // Si hay algún servicio con monto pendiente, obligar a indicar el monto primero
+  // Si hay algún servicio con monto pendiente, permitir indicar monto, cambiar servicio o descripción
   if (hasPendingPrice) {
     return Markup.inlineKeyboard([
       [
         Markup.button.callback('💰 Indicar Monto', 'ask_price'),
+        Markup.button.callback('✏️ Cambiar Servicio', 'ask_service')
+      ],
+      [
+        Markup.button.callback('📝 Modificar Descripción', 'ask_desc'),
         Markup.button.callback('❌ Descartar', 'cancel_quote')
       ]
     ]);
@@ -606,7 +650,11 @@ function buildConfirmationKeyboard(data) {
     return Markup.inlineKeyboard([
       [
         Markup.button.callback('✅ Confirmar Datos', 'confirm_quote'),
-        Markup.button.callback('➕ Corregir / Agregar', 'edit_quote')
+        Markup.button.callback('✏️ Cambiar Servicio', 'ask_service')
+      ],
+      [
+        Markup.button.callback('📝 Modificar Descripción', 'ask_desc'),
+        Markup.button.callback('➕ Más Opciones', 'edit_quote')
       ],
       [
         Markup.button.callback('❌ Descartar', 'cancel_quote')
@@ -673,7 +721,67 @@ bot.on('text', async (ctx, next) => {
   if (ctx.message.text && ctx.message.text.startsWith('/')) {
     return next();
   }
-  const parsed = await parseNaturalLanguage(ctx.message.text);
+
+  const state = getState(ctx.chat.id);
+  const userText = ctx.message.text;
+
+  // --- Manejo de acción pendiente (flujo guiado por botón) ---
+  if (state.pending_action) {
+    const action = state.pending_action;
+    delete state.pending_action;
+
+    if (action === 'awaiting_desc') {
+      // El usuario envió la descripción directamente — asignarla al último servicio
+      const desc = userText.trim();
+      if (state.data.servicios && state.data.servicios.length > 0) {
+        state.data.servicios[state.data.servicios.length - 1].descripcion = desc;
+      }
+      await ctx.reply(buildSummaryMessage(state.data), {
+        parse_mode: 'Markdown',
+        ...buildConfirmationKeyboard(state.data)
+      });
+      return;
+    }
+
+    if (action === 'awaiting_service') {
+      // El usuario envió el nuevo nombre de servicio — reemplazar servicios existentes
+      const parsed = await parseNaturalLanguage(userText);
+      parsed.replaceServices = true;
+      // Si el parser no detectó ningún servicio, crear uno personalizado con el texto literal
+      if (!parsed.servicios || parsed.servicios.length === 0) {
+        const svcName = userText.trim().replace(/[;,.]$/, '').trim();
+        const formattedName = svcName.charAt(0).toUpperCase() + svcName.slice(1);
+        parsed.servicios = [{
+          id: `custom_${svcName.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}`,
+          nombre: formattedName,
+          descripcion: `Servicio especializado: ${formattedName}`,
+          precio: null,
+          cantidad: 1,
+          isCustom: true
+        }];
+      }
+      const currentData = mergeStateData(ctx.chat.id, parsed);
+      await ctx.reply(buildSummaryMessage(currentData), {
+        parse_mode: 'Markdown',
+        ...buildConfirmationKeyboard(currentData)
+      });
+      return;
+    }
+
+    if (action === 'awaiting_price') {
+      // El usuario envió el precio — extraerlo y asignarlo
+      const parsed = await parseNaturalLanguage(userText);
+      const currentData = mergeStateData(ctx.chat.id, parsed);
+      await ctx.reply(buildSummaryMessage(currentData), {
+        parse_mode: 'Markdown',
+        ...buildConfirmationKeyboard(currentData)
+      });
+      return;
+    }
+  }
+
+  // --- Flujo normal ---
+  const parsed = await parseNaturalLanguage(userText);
   const currentData = mergeStateData(ctx.chat.id, parsed);
   await ctx.reply(buildSummaryMessage(currentData), {
     parse_mode: 'Markdown',
@@ -694,10 +802,65 @@ bot.on('voice', async ctx => {
 
     const rawText = await transcribeAudio(oggPath);
     const cleanText = cleanSpokenText(rawText);
-    const parsed = await parseNaturalLanguage(cleanText);
-    const currentData = mergeStateData(ctx.chat.id, parsed);
 
     await ctx.reply(`🗒️ *Transcripción:*\n_${cleanText}_`, { parse_mode: 'Markdown' });
+
+    const state = getState(ctx.chat.id);
+
+    // --- Manejo de acción pendiente (flujo guiado por botón) ---
+    if (state.pending_action) {
+      const action = state.pending_action;
+      delete state.pending_action;
+
+      if (action === 'awaiting_desc') {
+        const desc = cleanText.trim();
+        if (state.data.servicios && state.data.servicios.length > 0) {
+          state.data.servicios[state.data.servicios.length - 1].descripcion = desc;
+        }
+        await ctx.reply(buildSummaryMessage(state.data), {
+          parse_mode: 'Markdown',
+          ...buildConfirmationKeyboard(state.data)
+        });
+        return;
+      }
+
+      if (action === 'awaiting_service') {
+        const parsed = await parseNaturalLanguage(cleanText);
+        parsed.replaceServices = true;
+        if (!parsed.servicios || parsed.servicios.length === 0) {
+          const svcName = cleanText.trim().replace(/[;,.]$/, '').trim();
+          const formattedName = svcName.charAt(0).toUpperCase() + svcName.slice(1);
+          parsed.servicios = [{
+            id: `custom_${svcName.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}`,
+            nombre: formattedName,
+            descripcion: `Servicio especializado: ${formattedName}`,
+            precio: null,
+            cantidad: 1,
+            isCustom: true
+          }];
+        }
+        const currentData = mergeStateData(ctx.chat.id, parsed);
+        await ctx.reply(buildSummaryMessage(currentData), {
+          parse_mode: 'Markdown',
+          ...buildConfirmationKeyboard(currentData)
+        });
+        return;
+      }
+
+      if (action === 'awaiting_price') {
+        const parsed = await parseNaturalLanguage(cleanText);
+        const currentData = mergeStateData(ctx.chat.id, parsed);
+        await ctx.reply(buildSummaryMessage(currentData), {
+          parse_mode: 'Markdown',
+          ...buildConfirmationKeyboard(currentData)
+        });
+        return;
+      }
+    }
+
+    // --- Flujo normal ---
+    const parsed = await parseNaturalLanguage(cleanText);
+    const currentData = mergeStateData(ctx.chat.id, parsed);
     await ctx.reply(buildSummaryMessage(currentData), {
       parse_mode: 'Markdown',
       ...buildConfirmationKeyboard(currentData)
@@ -931,12 +1094,29 @@ bot.action('ask_price', async ctx => {
   const { lineas } = calculateSummaryTotals(state.data);
   const pending = lineas.find(l => l.p === null || l.p === undefined || l.p <= 0);
   const sName = pending ? pending.name : 'servicio';
-  await ctx.reply(`💰 Por favor envíame un mensaje de texto o nota de voz indicando el precio para el servicio "${sName}" (ejemplo: "$150" o "el precio es 200").`);
+  state.pending_action = 'awaiting_price';
+  await ctx.reply(`💰 ¿Cuál es el precio para el servicio *"${sName}"*?\n\nEnvíame el monto (ej: _"$150"_ o _"el precio es 200"_).`, { parse_mode: 'Markdown' });
+});
+
+bot.action('ask_service', async ctx => {
+  await ctx.answerCbQuery();
+  const state = getState(ctx.chat.id);
+  state.pending_action = 'awaiting_service';
+  await ctx.reply('✏️ ¿Cuál es el nuevo servicio?\n\nEscríbelo o dímelo por voz (ej: _"Auditoría de Sistemas"_, _"CRM"_, _"Landing Page"_).\n\nSi quieres incluir monto, agrégalo: _"Auditoría de Sistemas ;monto $400"_.', { parse_mode: 'Markdown' });
+});
+
+bot.action('ask_desc', async ctx => {
+  await ctx.answerCbQuery();
+  const state = getState(ctx.chat.id);
+  state.pending_action = 'awaiting_desc';
+  const { lineas } = calculateSummaryTotals(state.data);
+  const svcName = lineas.length > 0 ? lineas[lineas.length - 1].name : 'el servicio';
+  await ctx.reply(`📝 ¿Cuál es la descripción para *"${svcName}"*?\n\nEscríbela o dímela por voz directamente (no necesitas prefijo).`, { parse_mode: 'Markdown' });
 });
 
 bot.action('edit_quote', async ctx => {
   await ctx.answerCbQuery();
-  await ctx.reply('✍️ Puedes enviarme otra nota de voz o mensaje de texto indicando lo que deseas corregir o agregar (ej: "cambiar el monto a $150", "el correo es cliente@empresa.com" o "descuento del 10%").');
+  await ctx.reply('✍️ Puedes enviarme otra nota de voz o mensaje de texto indicando lo que deseas corregir o agregar (ejemplos:\n• "cambiar el monto a $150"\n• "descripción: Sistema para control de citas"\n• "el correo es cliente@empresa.com"\n• "descuento del 10%").');
 });
 
 bot.action('cancel_quote', async ctx => {
