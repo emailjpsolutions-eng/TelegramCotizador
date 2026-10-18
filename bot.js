@@ -637,10 +637,13 @@ function buildConfirmationKeyboard(data) {
     return Markup.inlineKeyboard([
       [
         Markup.button.callback('💰 Indicar Monto', 'ask_price'),
-        Markup.button.callback('✏️ Cambiar Servicio', 'ask_service')
+        Markup.button.callback('🔄 Cambiar Servicio', 'ask_service')
       ],
       [
-        Markup.button.callback('📝 Modificar Descripción', 'ask_desc'),
+        Markup.button.callback('➕ Agregar Servicio', 'add_service'),
+        Markup.button.callback('📝 Cambiar Descripción', 'ask_desc')
+      ],
+      [
         Markup.button.callback('❌ Descartar', 'cancel_quote')
       ]
     ]);
@@ -650,13 +653,14 @@ function buildConfirmationKeyboard(data) {
     return Markup.inlineKeyboard([
       [
         Markup.button.callback('✅ Confirmar Datos', 'confirm_quote'),
-        Markup.button.callback('✏️ Cambiar Servicio', 'ask_service')
+        Markup.button.callback('🔄 Cambiar Servicio', 'ask_service')
       ],
       [
-        Markup.button.callback('📝 Modificar Descripción', 'ask_desc'),
-        Markup.button.callback('➕ Más Opciones', 'edit_quote')
+        Markup.button.callback('➕ Agregar Servicio', 'add_service'),
+        Markup.button.callback('📝 Cambiar Descripción', 'ask_desc')
       ],
       [
+        Markup.button.callback('✏️ Más Opciones', 'edit_quote'),
         Markup.button.callback('❌ Descartar', 'cancel_quote')
       ]
     ]);
@@ -744,10 +748,37 @@ bot.on('text', async (ctx, next) => {
     }
 
     if (action === 'awaiting_service') {
-      // El usuario envió el nuevo nombre de servicio — reemplazar servicios existentes
+      // El usuario envió el nuevo nombre de servicio — REEMPLAZAR todos los existentes con UNO SOLO
       const parsed = await parseNaturalLanguage(userText);
       parsed.replaceServices = true;
       // Si el parser no detectó ningún servicio, crear uno personalizado con el texto literal
+      if (!parsed.servicios || parsed.servicios.length === 0) {
+        const svcName = userText.trim().replace(/[;,.]$/, '').trim();
+        const formattedName = svcName.charAt(0).toUpperCase() + svcName.slice(1);
+        parsed.servicios = [{
+          id: `custom_${svcName.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}`,
+          nombre: formattedName,
+          descripcion: `Servicio especializado: ${formattedName}`,
+          precio: null,
+          cantidad: 1,
+          isCustom: true
+        }];
+      } else {
+        // Tomar SOLO el primer servicio detectado para evitar re-agregar servicios no deseados
+        parsed.servicios = [parsed.servicios[0]];
+      }
+      const currentData = mergeStateData(ctx.chat.id, parsed);
+      await ctx.reply(buildSummaryMessage(currentData), {
+        parse_mode: 'Markdown',
+        ...buildConfirmationKeyboard(currentData)
+      });
+      return;
+    }
+
+    if (action === 'awaiting_add_service') {
+      // El usuario quiere AGREGAR un servicio sin borrar los existentes
+      const parsed = await parseNaturalLanguage(userText);
+      parsed.replaceServices = false;
       if (!parsed.servicios || parsed.servicios.length === 0) {
         const svcName = userText.trim().replace(/[;,.]$/, '').trim();
         const formattedName = svcName.charAt(0).toUpperCase() + svcName.slice(1);
@@ -827,6 +858,32 @@ bot.on('voice', async ctx => {
       if (action === 'awaiting_service') {
         const parsed = await parseNaturalLanguage(cleanText);
         parsed.replaceServices = true;
+        if (!parsed.servicios || parsed.servicios.length === 0) {
+          const svcName = cleanText.trim().replace(/[;,.]$/, '').trim();
+          const formattedName = svcName.charAt(0).toUpperCase() + svcName.slice(1);
+          parsed.servicios = [{
+            id: `custom_${svcName.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}`,
+            nombre: formattedName,
+            descripcion: `Servicio especializado: ${formattedName}`,
+            precio: null,
+            cantidad: 1,
+            isCustom: true
+          }];
+        } else {
+          // Tomar SOLO el primer servicio detectado
+          parsed.servicios = [parsed.servicios[0]];
+        }
+        const currentData = mergeStateData(ctx.chat.id, parsed);
+        await ctx.reply(buildSummaryMessage(currentData), {
+          parse_mode: 'Markdown',
+          ...buildConfirmationKeyboard(currentData)
+        });
+        return;
+      }
+
+      if (action === 'awaiting_add_service') {
+        const parsed = await parseNaturalLanguage(cleanText);
+        parsed.replaceServices = false;
         if (!parsed.servicios || parsed.servicios.length === 0) {
           const svcName = cleanText.trim().replace(/[;,.]$/, '').trim();
           const formattedName = svcName.charAt(0).toUpperCase() + svcName.slice(1);
@@ -1101,8 +1158,17 @@ bot.action('ask_price', async ctx => {
 bot.action('ask_service', async ctx => {
   await ctx.answerCbQuery();
   const state = getState(ctx.chat.id);
+  const { lineas } = calculateSummaryTotals(state.data);
+  const currentSvc = lineas.length > 0 ? lineas.map(l => `*${l.name}*`).join(', ') : 'el actual';
   state.pending_action = 'awaiting_service';
-  await ctx.reply('✏️ ¿Cuál es el nuevo servicio?\n\nEscríbelo o dímelo por voz (ej: _"Auditoría de Sistemas"_, _"CRM"_, _"Landing Page"_).\n\nSi quieres incluir monto, agrégalo: _"Auditoría de Sistemas ;monto $400"_.', { parse_mode: 'Markdown' });
+  await ctx.reply(`🔄 *Cambiar Servicio*\n\nServicio actual: ${currentSvc}\n\n¿Por cuál lo reemplazas? Escríbelo o dímelo por voz:\n_(ej: "Chatbot", "Landing Page", "Auditoría de Sistemas $400")_\n\n⚠️ _Esto reemplazará el servicio existente._`, { parse_mode: 'Markdown' });
+});
+
+bot.action('add_service', async ctx => {
+  await ctx.answerCbQuery();
+  const state = getState(ctx.chat.id);
+  state.pending_action = 'awaiting_add_service';
+  await ctx.reply('➕ *Agregar Servicio*\n\n¿Qué servicio deseas agregar? Escríbelo o dímelo por voz:\n_(ej: "Chatbot", "Landing Page $200", "Consultoría")_\n\n✅ _Los servicios actuales se mantendrán._', { parse_mode: 'Markdown' });
 });
 
 bot.action('ask_desc', async ctx => {
