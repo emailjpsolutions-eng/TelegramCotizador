@@ -33,5 +33,10 @@
     "nombre": "Análisis perfil Negocio",
     "descripcion": "Revisión y Análisis del perfil de Google My Business",
     "precio": 300
+  },
+  "crm": {
+    "nombre": "Sistema CRM / Gestión de Clientes",
+    "descripcion": "Implementación de CRM para gestión y seguimiento de clientes",
+    "precio": 400
   }
 }

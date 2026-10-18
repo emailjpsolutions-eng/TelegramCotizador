@@ -72,11 +72,14 @@ function mergeStateData(chatId, parsedData) {
   }
 
   for (const [key, val] of Object.entries(parsedData)) {
-    if (key === 'isNewQuote' || key === 'montoGlobal') continue;
+    if (key === 'isNewQuote' || key === 'montoGlobal' || key === 'replaceServices') continue;
     if (val !== null && val !== undefined) {
       if (key === 'servicios') {
         if (Array.isArray(val) && val.length > 0) {
-          if (!state.data.servicios) state.data.servicios = [];
+          // Si el usuario solicitó explícitamente cambiar o reemplazar el servicio, vaciar servicios anteriores
+          if (!state.data.servicios || parsedData.replaceServices) {
+            state.data.servicios = [];
+          }
           val.forEach(newS => {
             const existing = state.data.servicios.find(s => s.id === newS.id || (s.nombre && newS.nombre && s.nombre.toLowerCase() === newS.nombre.toLowerCase()));
             if (existing) {
@@ -103,7 +106,7 @@ function mergeStateData(chatId, parsedData) {
       const pendingService = state.data.servicios.find(s => s.precio === null || s.precio === undefined || s.precio <= 0);
       if (pendingService) {
         pendingService.precio = parsedData.montoGlobal;
-      } else if (!parsedData.servicios || parsedData.servicios.length === 0 || state.data.servicios.length === 1) {
+      } else if (!parsedData.servicios || parsedData.servicios.length === 0 || state.data.servicios.length === 1 || parsedData.replaceServices) {
         // Prioridad 2: Si no hay servicios pendientes y es cambio general de monto, asignar al último o único servicio
         state.data.servicios[state.data.servicios.length - 1].precio = parsedData.montoGlobal;
       }
@@ -222,15 +225,21 @@ function extractPriceUpdates(text) {
 // Extractor de servicios personalizados fuera del catálogo estándar
 function extractCustomServices(text, detectedPrice) {
   const custom = [];
-  const delim = `(?=\\s+para\\s+el\\b|\\s+para\\s+la\\b|\\s+para\\b|\\s+al\\s+señor\\b|\\s+a\\s+la\\s+señora\\b|\\s+al\\s+sr\\.?|\\s+a\\s+la\\s+sra\\.?|\\s+cliente\\b|\\s+empresa\\b|\\s+correo\\b|\\s+email\\b|\\s+tel[eé]fono\\b|\\s+tel\\b|\\s+descuento\\b|\\s+notas\\b|\\s+por\\s+\\$|\\s+en\\s+\\$|\\s+a\\s+\\$|\\s+\\$\\d|[,\\.\n]|$)`;
+  const delim = `(?=\\s+para\\s+el\\b|\\s+para\\s+la\\b|\\s+para\\b|\\s+al\\s+señor\\b|\\s+a\\s+la\\s+señora\\b|\\s+al\\s+sr\\.?|\\s+a\\s+la\\s+sra\\.?|\\s+cliente\\b|\\s+empresa\\b|\\s+correo\\b|\\s+email\\b|\\s+tel[eé]fono\\b|\\s+tel\\b|\\s+descuento\\b|\\s+notas\\b|\\s+monto\\b|\\s+precio\\b|\\s+costo\\b|\\s+valor\\b|\\s+por\\s+\\$|\\s+en\\s+\\$|\\s+a\\s+\\$|\\s+\\$\\d|[;,\\.\n]|$)`;
 
   const activities = 'generaci[oó]n|captaci[oó]n|prospecci[oó]n|marketing|diseño|instalaci[oó]n|mantenimiento|auditor[ií]a|reparaci[oó]n|capacitaci[oó]n|migraci[oó]n|gesti[oó]n|configuraci[oó]n|fotograf[ií]a|publicidad|asesor[ií]a|campa[nñ]as?|optimizaci[oó]n|posicionamiento';
 
   const patterns = [
-    // "servicio de X", "servicio: X"
-    new RegExp(`(?:servicio\\s+de|servicio:)\\s+([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\\s\\-\\.]+?)${delim}`, 'i'),
-    // "realizarle una X", "realizar un X", "hacerle una X", "hacer un X", "instalarle un X"
-    new RegExp(`(?:realizar(?:le)?|hacer(?:le)?|crear(?:le)?|instalar(?:le)?)\\s+(?:un|una|el|la)\\s+([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\\s\\-\\.]+?)${delim}`, 'i'),
+    // "cambiar el servicio a X", "cambia servicio por X", "reemplazar servicio por X", "sustituir servicio por X"
+    new RegExp(`(?:cambiar|cambia|cambialo|cambiala|modificar|modifica|reemplazar|reemplaza|sustituir|sustituye|actualizar|actualiza)\\s+(?:el\\s+)?servicio\\s+(?:a|por|en|:)?\\s+([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\\s\\-\\.]+?)${delim}`, 'i'),
+    // "servicio: X", "servicio de X", "el servicio es X", "servicio es X"
+    new RegExp(`(?:(?:el\\s+)?servicio\\s*(?:es|ser[ií]a|:)?|servicio\\s+de)\\s+([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\\s\\-\\.]+?)${delim}`, 'i'),
+    // "quieren un CRM", "necesitan un software", "solicitan una app", "buscan un CRM"
+    new RegExp(`(?:quieren|quiere|necesitan|necesita|requieren|requiere|solicitan|solicita|buscan|busca)\\s+(?:un|una|el|la)\\s+([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\\s\\-\\.]+?)${delim}`, 'i'),
+    // "implementar/configurar/instalar un CRM / sistema"
+    new RegExp(`(?:implementar(?:le)?|configurar(?:le)?|instalar(?:le)?|desarrollar(?:le)?)\\s+(?:un|una|el|la)?\\s*([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\\s\\-\\.]+?)${delim}`, 'i'),
+    // "realizarle una X", "realizar un X", "hacerle una X", "hacer un X"
+    new RegExp(`(?:realizar(?:le)?|hacer(?:le)?|crear(?:le)?)\\s+(?:un|una|el|la)\\s+([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\\s\\-\\.]+?)${delim}`, 'i'),
     // "agregar/incluir el servicio de X"
     new RegExp(`(?:agregar|incluir)\\s+(?:el\\s+|un\\s+)?servicio\\s+(?:de\\s+)?([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\\s\\-\\.]+?)${delim}`, 'i'),
     // "para generación de leads", "para marketing digital", "con captación de clientes"
@@ -250,20 +259,21 @@ function extractCustomServices(text, detectedPrice) {
     'chatbot', 'chatbots', 'agente', 'agentes', 'inteligencia artificial',
     'correo corporativo', 'automatización', 'automatizacion',
     'consultoría', 'consultoria', 'soporte', 'soporte técnico',
-    'google business', 'perfil de negocio', 'desarrollo a medida', 'software a medida'
+    'google business', 'perfil de negocio', 'desarrollo a medida', 'software a medida',
+    'crm', 'sistema crm', 'gestion de clientes', 'gestión de clientes'
   ];
 
   for (const pat of patterns) {
     const match = text.match(pat);
     if (match) {
-      let cand = match[1].trim().replace(/[,.]$/, '').trim();
+      let cand = match[1].trim().replace(/[;,.]$/, '').trim();
       const candLower = cand.toLowerCase();
 
       const isBlacklisted = blacklist.some(b => candLower.includes(b));
       const isStandard = standardTerms.some(st => candLower.includes(st));
 
-      if (!isBlacklisted && !isStandard && cand.length >= 3) {
-        const formattedName = cand.charAt(0).toUpperCase() + cand.slice(1);
+      if (!isBlacklisted && !isStandard && cand.length >= 2) {
+        const formattedName = cand.toUpperCase() === cand ? cand : (cand.charAt(0).toUpperCase() + cand.slice(1));
         const serviceId = `custom_${candLower.replace(/[^a-z0-9]/g, '_').slice(0, 15)}`;
         custom.push({
           id: serviceId,
@@ -281,7 +291,8 @@ function extractCustomServices(text, detectedPrice) {
 }
 
 // Parser ligero. Extrae campos esperados mediante regex inteligente.
-async function parseNaturalLanguage(text) {
+async function parseNaturalLanguage(rawText) {
+  const text = cleanSpokenText(rawText);
   const result = {
     clienteNombre: null,
     clienteEmpresa: null,
@@ -292,12 +303,18 @@ async function parseNaturalLanguage(text) {
     descuento: 0,
     notas: null,
     montoGlobal: null,
-    isNewQuote: false
+    isNewQuote: false,
+    replaceServices: false
   };
 
   // Detectar si el mensaje inicia una nueva solicitud de cotización
-  if (/(?:vamos a|nueva|hacer|crear|generar)\s+(?:enviar\s+)?(?:una\s+)?cotizaci[oó]n/i.test(text)) {
+  if (/(?:vamos a|nueva|hacer|crear|generar|preparar|armar|iniciar|comenzar|montar)\s+(?:enviar\s+)?(?:una\s+)?cotizaci[oó]n|nueva\s+cotizaci[oó]n/i.test(text)) {
     result.isNewQuote = true;
+  }
+
+  // Detectar si el usuario pide explícitamente cambiar o definir el servicio
+  if (/(?:cambiar|cambia|cambialo|cambiala|modificar|modifica|reemplazar|reemplaza|sustituir|sustituye)\s+(?:el\s+)?servicio|servicio\s*:|(?:el\s+)?servicio\s+(?:es|ser[ií]a)/i.test(text)) {
+    result.replaceServices = true;
   }
 
   // Normalizar email en el texto
@@ -336,7 +353,12 @@ async function parseNaturalLanguage(text) {
       nombreMatch = nameFromEmail;
     }
   }
-  if (nombreMatch) result.clienteNombre = nombreMatch[1].trim();
+  if (nombreMatch) {
+    let cand = nombreMatch[1].trim();
+    // Limpiar restos de frases de correo como "arroba", "gmail", etc.
+    cand = cand.replace(/\s+(?:arroba|aroba|email|correo|gmail|yahoo|hotmail|outlook).*$/i, '').trim();
+    if (cand) result.clienteNombre = cand;
+  }
 
   // Empresa ('empresa: X', 'del Restaurant El Maute', 'de ferretería EPA', 'clínica veterinaria llamada Mis Cachorros')
   const nonCompanyTerms = [
@@ -401,6 +423,12 @@ async function parseNaturalLanguage(text) {
     .replace(/(?:correo|email|mail)(?:\s+es|\s*:)?\s*[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, '')
     .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, '');
 
+  // Extracción de precio / monto personalizado
+  const detectedPrice = extractPriceUpdates(text);
+  if (detectedPrice !== null) {
+    result.montoGlobal = detectedPrice;
+  }
+
   // 1. Servicios estándar del catálogo (usando límites de palabra y patrones refinados)
   const serviciosDisponibles = [
     { pat: '\\blanding\\b|landing\\s+page|landing\\s+pahe|p[aá]gina\\s+web', id: 'lp' },
@@ -408,13 +436,14 @@ async function parseNaturalLanguage(text) {
     { pat: '\\bautomatizaci[oó]n\\b|\\bcuentas?\\s+(?:corporativa|profesional)(?:s)?\\s+de\\s+correo\\b|\\bcorreos?\\s+(?:de\\s+dominio|corporativos?|profesionales?)\\b|\\bemails?\\s+corporativos?\\b|\\bconfiguraci[oó]n\\s+de\\s+correo\\b', id: 'af' },
     { pat: '\\bconsultor[ií]a\\b', id: 'con' },
     { pat: '\\bsoporte\\b', id: 'sop' },
-    { pat: 'google\\s+my\\s+business|google\\s+business|perfil\\s+de\\s+negocio|an[aá]lisis\\s+(?:del\\s+)?perfil|perfil\\s+de\\s+google', id: 'gmb' }
+    { pat: 'google\\s+my\\s+business|google\\s+business|perfil\\s+de\\s+negocio|an[aá]lisis\\s+(?:del\\s+)?perfil|perfil\\s+de\\s+google', id: 'gmb' },
+    { pat: '\\bcrm\\b|\\bsistema\\s+crm\\b|\\bgesti[oó]n\\s+de\\s+clientes\\b', id: 'crm' }
   ];
 
   serviciosDisponibles.forEach(s => {
     if (new RegExp(s.pat, 'i').test(textForServices)) {
       if (!result.servicios.some(x => x.id === s.id)) {
-        result.servicios.push({ id: s.id, cantidad: 1 });
+        result.servicios.push({ id: s.id, cantidad: 1, precio: detectedPrice || null });
       }
     }
   });
@@ -424,7 +453,7 @@ async function parseNaturalLanguage(text) {
   const mdGeneric = /\bdesarrollo\b|\bsoftware\b/i;
   if (mdExplicit.test(textForServices) || (result.servicios.length === 0 && mdGeneric.test(textForServices))) {
     if (!result.servicios.some(x => x.id === 'md')) {
-      result.servicios.push({ id: 'md', cantidad: 1 });
+      result.servicios.push({ id: 'md', cantidad: 1, precio: detectedPrice || null });
     }
   }
 
@@ -434,17 +463,6 @@ async function parseNaturalLanguage(text) {
     let val = (descMatch[1] || descMatch[2]).replace(',', '.');
     if (val.includes('.')) result.descuento = Math.round(parseFloat(val) * 100);
     else result.descuento = parseInt(val, 10);
-  }
-
-  // Extracción de precio / monto personalizado
-  const detectedPrice = extractPriceUpdates(text);
-  if (detectedPrice !== null) {
-    result.montoGlobal = detectedPrice;
-    if (result.servicios.length > 0) {
-      result.servicios.forEach(s => {
-        s.precio = detectedPrice;
-      });
-    }
   }
 
   // 2. Detección de servicios personalizados fuera del catálogo
@@ -676,7 +694,7 @@ bot.on('voice', async ctx => {
 
     const rawText = await transcribeAudio(oggPath);
     const cleanText = cleanSpokenText(rawText);
-    const parsed = await parseNaturalLanguage(rawText);
+    const parsed = await parseNaturalLanguage(cleanText);
     const currentData = mergeStateData(ctx.chat.id, parsed);
 
     await ctx.reply(`🗒️ *Transcripción:*\n_${cleanText}_`, { parse_mode: 'Markdown' });
