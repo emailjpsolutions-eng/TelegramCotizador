@@ -9,11 +9,12 @@ const { buildPdf, fmt } = require('./pdfEngine');
 const oauth = require('./oauth');
 
 // Configuración del token del bot (fallback al token hardcodeado)
-const BOT_TOKEN = process.env.BOT_TOKEN || '8710333497:AAGyBPJ0p8WMYirR19KMqTtxeiDLU9bP3FQ';
+const BOT_TOKEN = (process.env.BOT_TOKEN || '').trim();
 if (!BOT_TOKEN) {
   console.error('❌ Falta BOT_TOKEN');
   process.exit(1);
 }
+console.log(`🔑 Token cargado (Longitud: ${BOT_TOKEN.length}, Inicio: ${BOT_TOKEN.slice(0, 12)}..., Final: ...${BOT_TOKEN.slice(-5)})`);
 
 // Configuración de opciones de Telegram (Soporte para Proxy y servidor alternativo)
 const telegramOptions = { timeout: 120000 };
