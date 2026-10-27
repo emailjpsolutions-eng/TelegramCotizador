@@ -401,11 +401,18 @@ El servicio está vinculado al repositorio de GitHub:
 * **Comando de inicio (Start Command):** `node bot.js`
 * **Auto-Deploy:** Al hacer `git push origin main`, Render detecta automáticamente las modificaciones y reinicia el bot sin intervención manual.
 
-### 4. Estrategia Anti-Suspensión (Keep-Alive 24/7)
-En la capa gratuita de Render, las instancias entran en modo reposo tras 15 minutos sin tráfico. Para mantener el bot operativo 24/7:
-* Configurar una tarea programada en [cron-job.org](https://cron-job.org) o [UptimeRobot](https://uptimerobot.com).
-* **Frecuencia:** Cada 10 minutos (`*/10 * * * *`).
-* **Endpoint:** `GET https://tu-servicio.onrender.com/health`
+### 4. Estado Actual del Despliegue
+* **Bot de Telegram Oficial:** [@CotizaJPS_bot](https://t.me/CotizaJPS_bot) (`CotizadorJPS`)
+* **URL Pública en Render:** `https://telegramcotizador-2n0r.onrender.com`
+* **Health Check & Ping:** `https://telegramcotizador-2n0r.onrender.com/` o `/health`
+
+### 5. Estrategia Anti-Suspensión (Keep-Alive 24/7)
+En la capa gratuita de Render, las instancias entran en modo reposo tras 15 minutos sin tráfico entrante. Para mantener el bot operativo 24/7:
+* Tarea programada en [cron-job.org](https://cron-job.org):
+  * **Nombre:** `CotizadorEnRender`
+  * **Frecuencia:** Cada 10 minutos (`*/10 * * * *`).
+  * **Endpoint:** `GET https://telegramcotizador-2n0r.onrender.com/`
+  * **Headers:** No requiere autenticación (acceso público).
 
 ---
 
