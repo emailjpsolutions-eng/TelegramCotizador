@@ -120,6 +120,7 @@ async function exchangeCode(code, redirectUri, stateChatId) {
   const data = await res.json();
 
   let userEmail = null;
+  let userName = null;
   try {
     const infoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: { Authorization: `Bearer ${data.access_token}` }
@@ -127,6 +128,7 @@ async function exchangeCode(code, redirectUri, stateChatId) {
     if (infoRes.ok) {
       const info = await infoRes.json();
       userEmail = info.email || null;
+      userName = info.name || null;
     }
   } catch (e) {
     console.warn('[OAuth] No se pudo obtener el email del perfil:', e.message);
@@ -134,6 +136,7 @@ async function exchangeCode(code, redirectUri, stateChatId) {
 
   const tokens = {
     email: userEmail,
+    name: userName,
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     expires_at: Date.now() + (data.expires_in * 1000)
@@ -160,7 +163,7 @@ async function getValidAccessToken(chatId) {
 
   // Si el access token aún es válido (con margen de 60 segundos), reutilizarlo
   if (t.access_token && t.expires_at && Date.now() < t.expires_at - 60000) {
-    return { token: t.access_token, email: t.email };
+    return { token: t.access_token, email: t.email, name: t.name };
   }
 
   // Renovar access token usando refresh token
@@ -196,7 +199,7 @@ async function getValidAccessToken(chatId) {
     saveUserTokens(chatId, t);
   }
 
-  return { token: t.access_token, email: t.email };
+  return { token: t.access_token, email: t.email, name: t.name };
 }
 
 function setupOAuthRoutes(app, botInstance) {

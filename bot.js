@@ -1075,6 +1075,7 @@ async function createAndSendDraft(ctx, chatId) {
   try {
     const authResult = await oauth.getValidAccessToken(chatId);
     const token = authResult.token;
+    const emisorNombre = authResult.name || 'Asesor Comercial';
     const emisorEmail = authResult.email || process.env.JP_EMAIL || 'info@jpsolutions.online';
 
     const pdfData = preparePdfData(state.data);
@@ -1087,8 +1088,8 @@ async function createAndSendDraft(ctx, chatId) {
     const filename = `Cotizacion_JPSolutions_${pdfData.cotNum}.pdf`;
 
     const bodyHtml = `
-      <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 600px;">
-        <h2 style="color: #3b82f6;">Cotización Formal — JP Solutions</h2>
+      <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 600px; line-height: 1.6;">
+        <h2 style="color: #3b82f6; margin-bottom: 12px;">Cotización Formal — JP Solutions</h2>
         <p>Estimado/a <strong>${pdfData.cliente.nombre || pdfData.cliente.empresa}</strong>,</p>
         <p>Es un placer saludarte. Adjunto a este correo encontrarás la propuesta formal de cotización N° <strong>${pdfData.cotNum}</strong>.</p>
         <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
@@ -1098,12 +1099,15 @@ async function createAndSendDraft(ctx, chatId) {
           </ul>
           <p style="margin: 12px 0 0 0; font-size: 16px;"><strong>Monto Total: ${fmt(pdfResult.total)}</strong></p>
         </div>
-        <p>Quedamos atentos a cualquier duda o comentario.</p>
-        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-        <p style="font-size: 12px; color: #64748b;">
-          <strong>JP Solutions</strong> — Automatización e Inteligencia Artificial<br/>
-          ✉ ${pdfData.emisor.email} | ☎ ${pdfData.emisor.tel} | 🌐 ${pdfData.emisor.web}
-        </p>
+        <p>Quedo atento/a a cualquier duda o comentario sobre la propuesta.</p>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0 16px 0;" />
+        <div style="font-size: 13px; color: #475569;">
+          <p style="margin: 0 0 4px 0; font-weight: bold; font-size: 15px; color: #1e293b;">${emisorNombre}</p>
+          <p style="margin: 0 0 6px 0; color: #64748b;">Asesor Comercial — <strong>JP Solutions</strong></p>
+          <p style="margin: 0; font-size: 12px; color: #64748b;">
+            ✉ <a href="mailto:${emisorEmail}" style="color: #3b82f6; text-decoration: none;">${emisorEmail}</a> | ☎ ${pdfData.emisor.tel} | 🌐 <a href="https://${pdfData.emisor.web}" style="color: #3b82f6; text-decoration: none;">${pdfData.emisor.web}</a>
+          </p>
+        </div>
       </div>
     `;
 
