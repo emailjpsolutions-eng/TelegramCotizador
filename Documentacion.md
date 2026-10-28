@@ -39,7 +39,7 @@ GOOGLE_CLIENT_SECRET=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
 
 # Opcionales (tienen defaults en código)
 JP_EMAIL=email.jpsolutions@gmail.com
-JP_TEL=0414-3325600
+# JP_TEL=+58-xxx-xxxxxxx
 ```
 
 > **⚠️ IMPORTANTE**: El archivo `.env` NO debe commitearse al repositorio. Copiar manualmente al servidor.

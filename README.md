@@ -191,7 +191,7 @@ GOOGLE_CLIENT_SECRET=tu_cliente_secret
 
 # Datos Corporativos del Emisor (Opcionales - con defaults en código)
 JP_EMAIL=info@jpsolutions.online
-JP_TEL=0414-3325600
+# JP_TEL=+58-xxx-xxxxxxx
 
 # Parámetros de Red / Proxy (Opcionales para entornos con bloqueo)
 # HTTPS_PROXY=http://127.0.0.1:1080

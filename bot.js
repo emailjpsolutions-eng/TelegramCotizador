@@ -989,7 +989,7 @@ function preparePdfData(stateData) {
     cotFecha: stateData.cotFecha,
     emisor: {
       email: process.env.JP_EMAIL || 'info@jpsolutions.online',
-      tel: process.env.JP_TEL || '0414-3325600',
+      tel: process.env.JP_TEL || '',
       web: 'www.jpsolutions.online',
       ciudad: 'Caracas, Venezuela'
     },
@@ -1105,7 +1105,7 @@ async function createAndSendDraft(ctx, chatId) {
           <p style="margin: 0 0 4px 0; font-weight: bold; font-size: 15px; color: #1e293b;">${emisorNombre}</p>
           <p style="margin: 0 0 6px 0; color: #64748b;">Asesor Comercial — <strong>JP Solutions</strong></p>
           <p style="margin: 0; font-size: 12px; color: #64748b;">
-            ✉ <a href="mailto:${emisorEmail}" style="color: #3b82f6; text-decoration: none;">${emisorEmail}</a> | ☎ ${pdfData.emisor.tel} | 🌐 <a href="https://${pdfData.emisor.web}" style="color: #3b82f6; text-decoration: none;">${pdfData.emisor.web}</a>
+            ✉ <a href="mailto:${emisorEmail}" style="color: #3b82f6; text-decoration: none;">${emisorEmail}</a>${pdfData.emisor.tel ? ` | ☎ ${pdfData.emisor.tel}` : ''} | 🌐 <a href="https://${pdfData.emisor.web}" style="color: #3b82f6; text-decoration: none;">${pdfData.emisor.web}</a>
           </p>
         </div>
       </div>
