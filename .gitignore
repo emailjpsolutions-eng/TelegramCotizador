@@ -6,6 +6,7 @@ node_modules/
 .env.*
 !.env.example
 gmail_tokens.json
+user_tokens.json
 
 # Logs y depuración
 *.log

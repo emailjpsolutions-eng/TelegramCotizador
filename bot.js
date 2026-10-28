@@ -41,7 +41,7 @@ const bot = new Telegraf(BOT_TOKEN, { handlerTimeout: 86400000, telegram: telegr
 // Servidor Web para Render (Health Check) y OAuth2
 const express = require('express');
 const webApp = express();
-oauth.setupOAuthRoutes(webApp);
+oauth.setupOAuthRoutes(webApp, bot);
 const PORT = process.env.PORT || 3000;
 webApp.listen(PORT, '0.0.0.0', () => {
   console.log(`🌐 Servidor Web de salud y OAuth activo en puerto ${PORT}`);
@@ -1073,8 +1073,16 @@ async function createAndSendDraft(ctx, chatId) {
   }
 
   try {
-    const token = await oauth.getValidAccessToken();
+    const authResult = await oauth.getValidAccessToken(chatId);
+    const token = authResult.token;
+    const emisorEmail = authResult.email || process.env.JP_EMAIL || 'info@jpsolutions.online';
+
     const pdfData = preparePdfData(state.data);
+    // Asignar el correo del emisor autenticado en el PDF si está disponible
+    if (authResult.email) {
+      pdfData.emisor.email = authResult.email;
+    }
+
     const pdfResult = buildPdf(pdfData);
     const filename = `Cotizacion_JPSolutions_${pdfData.cotNum}.pdf`;
 
@@ -1118,7 +1126,14 @@ async function createAndSendDraft(ctx, chatId) {
       return ctx.reply(`❌ Error al crear borrador en Gmail: ${errText}`);
     }
 
-    await ctx.reply(`✅ *Borrador guardado en Gmail con éxito!*\n\n📧 *Destinatario:* \`${email}\`\n📄 *Adjunto:* \`${filename}\`\n💰 *Monto:* ${fmt(pdfResult.total)}`, { parse_mode: 'Markdown' });
+    await ctx.reply(
+      `✅ *¡Borrador guardado en Gmail con éxito!*\n\n` +
+      `👤 *Cuenta emisora:* \`${emisorEmail}\`\n` +
+      `📧 *Destinatario:* \`${email}\`\n` +
+      `📄 *Adjunto:* \`${filename}\`\n` +
+      `💰 *Monto:* ${fmt(pdfResult.total)}`,
+      { parse_mode: 'Markdown' }
+    );
     resetState(chatId);
   } catch (e) {
     console.error('Error en draft:', e);
@@ -1137,9 +1152,21 @@ bot.command('draft', async ctx => {
 
 bot.command('auth', async ctx => {
   try {
-    const url = oauth.getAuthUrl();
-    oauth.startOAuthServer();
-    ctx.reply(`🔗 Haz clic en el siguiente enlace para autorizar Gmail con Google OAuth:\n${url}`);
+    const userTok = oauth.loadUserToken(ctx.chat.id);
+    let extraInfo = '';
+    if (userTok && userTok.email) {
+      extraInfo = `\n\n📌 *Cuenta actualmente vinculada:* \`${userTok.email}\`\nSi deseas cambiarla o renovar el acceso, vuelve a hacer clic en el enlace.`;
+    }
+
+    // Usar la URL de producción configurada o fallback
+    const baseUrl = process.env.APP_BASE_URL || 'https://telegramcotizador-2n0r.onrender.com';
+    const redirectUri = `${baseUrl.replace(/\/+$/, '')}/oauth2callback`;
+    const url = oauth.getAuthUrl(ctx.chat.id, redirectUri);
+
+    await ctx.reply(
+      `🔗 *Vincular cuenta de Gmail*\n\nHaz clic en el siguiente enlace para iniciar sesión con tu cuenta de Google y autorizar la creación de borradores:${extraInfo}\n\n👉 [Autorizar mi Gmail con Google OAuth](${url})`,
+      { parse_mode: 'Markdown', disable_web_page_preview: true }
+    );
   } catch (e) {
     ctx.reply('❌ Error iniciando autorización: ' + e.message);
   }
